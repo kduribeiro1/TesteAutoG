@@ -1,4 +1,4 @@
-name: Build and publish ClickOnce (WPF .NET 8 - TesteAutoG)
+name: Build & Publish ClickOnce (WPF .NET 8 - TesteAutoG)
 
 on:
   push:
@@ -9,48 +9,83 @@ jobs:
   build:
     runs-on: windows-latest
 
+    env:
+      PROJECT_PATH: ./TesteAutoG/TesteAutoG.csproj
+      PUBLISH_DIR: publish
+
     steps:
-      # 1️⃣ Clona o repositório
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Instala o .NET 8
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
-      # 3️⃣ Lê a versão diretamente do arquivo .csproj
-      - name: Read project version
+      # Lê <Version> de TesteAutoG.csproj; se não houver, tenta Directory.Build.props; se ainda assim não houver, usa 1.0.0.0
+      - name: Read version from project
         id: get_version
         shell: pwsh
         run: |
-          [xml]$proj = Get-Content "./TesteAutoG/TesteAutoG.csproj"
-          $version = $proj.Project.PropertyGroup.Version
+          function Get-VersionFromXml($path) {
+            if (Test-Path $path) {
+              [xml]$xml = Get-Content $path
+              $ver = $xml.Project.PropertyGroup.Version
+              if ($ver) { return $ver }
+            }
+            return $null
+          }
+          $version = Get-VersionFromXml "$env:PROJECT_PATH"
+          if (-not $version -and (Test-Path "./Directory.Build.props")) {
+            $version = Get-VersionFromXml "./Directory.Build.props"
+          }
           if (-not $version) {
-            Write-Host "⚠️ Nenhuma tag <Version> encontrada no csproj, usando 1.0.0.0 por padrão."
+            Write-Host "⚠️ Tag <Version> não encontrada; usando 1.0.0.0"
             $version = "1.0.0.0"
           }
-          echo "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "🔖 Projeto em versão: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
 
-      # 4️⃣ Restaura dependências
-      - name: Restore dependencies
-        run: dotnet restore
+      - name: Restore
+        run: dotnet restore $env:PROJECT_PATH
 
-      # 5️⃣ Publica o ClickOnce
+      # Publicação ClickOnce sem profile (propriedades essenciais)
       - name: Publish ClickOnce
-        run: dotnet publish ./TesteAutoG/TesteAutoG.csproj -c Release -p:PublishDir=publish/
+        run: |
+          dotnet publish $env:PROJECT_PATH -c Release `
+            -p:PublishDir=$env:PUBLISH_DIR\ `
+            -p:RuntimeIdentifier=win-x64 `
+            -p:SelfContained=false `
+            -p:PublishSingleFile=false `
+            -p:GenerateClickOnceManifests=true `
+            -p:Install=true `
+            -p:InstallFrom=Web `
+            -p:UpdateEnabled=true `
+            -p:UpdateMode=Foreground `
+            -p:UpdateInterval=0 `
+            -p:UpdateIntervalUnits=Days `
+            -p:PublisherName="TesteAutoG" `
+            -p:ProductName="TesteAutoG" `
+            -p:ApplicationVersion=${{ steps.get_version.outputs.version }} `
+            -p:ApplicationRevision=0
 
-      # 6️⃣ Cria uma Release com o mesmo número de versão do projeto
+      # (Opcional) Lista o que foi gerado para facilitar debug
+      - name: List publish output
+        shell: pwsh
+        run: |
+          Write-Host "📁 Conteúdo de $env:PUBLISH_DIR"
+          Get-ChildItem -Recurse $env:PUBLISH_DIR | ForEach-Object { $_.FullName }
+
+      # Cria/atualiza a Release usando exatamente a versão do projeto
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           name: "Versão ${{ steps.get_version.outputs.version }}"
           tag_name: "v${{ steps.get_version.outputs.version }}"
-          body: "Publicação automática ClickOnce (.NET 8 WPF - TesteAutoG)"
+          body: "Build automática ClickOnce (.NET 8 WPF - TesteAutoG)"
           files: |
-            publish/setup.exe
-            publish/TesteAutoG.application
-            publish/Application Files/**/*
+            "${{ env.PUBLISH_DIR }}/setup.exe"
+            "${{ env.PUBLISH_DIR }}/TesteAutoG.application"
+            "${{ env.PUBLISH_DIR }}/Application Files/**/*"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
