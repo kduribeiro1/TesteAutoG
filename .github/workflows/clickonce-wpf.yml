@@ -1,4 +1,4 @@
-name: Build and Publish ClickOnce (WPF .NET 8 - TesteAutoG)
+name: Build and Publish ClickOnce (WPF .NET 8 - TesteAutoG com setup.exe)
 
 on:
   push:
@@ -19,11 +19,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Instala o .NET 8 SDK
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
+      # 2️⃣ Instala o Visual Studio Build Tools (com workload de Desktop .NET)
+      - name: Install Visual Studio Build Tools
+        run: |
+          choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools --includeRecommended --includeOptional --quiet --norestart" --yes
+          echo "Visual Studio Build Tools instalado com sucesso."
 
       # 3️⃣ Lê a versão do projeto
       - name: Read project version
@@ -33,30 +33,24 @@ jobs:
           [xml]$proj = Get-Content "$env:PROJECT_PATH"
           $version = $proj.Project.PropertyGroup.Version
           if (-not $version) {
-            Write-Host "⚠️ Nenhuma versão encontrada, usando 1.0.0.0"
+            Write-Host "⚠️ Nenhuma versão encontrada; usando 1.0.0.0"
             $version = "1.0.0.0"
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
-      # 4️⃣ Restaura dependências
-      - name: Restore dependencies
-        run: dotnet restore $env:PROJECT_PATH
-
-      # 5️⃣ Publica o ClickOnce (usando perfil, mas sem assinatura)
-      - name: Publish ClickOnce using VS profile
+      # 4️⃣ Publica o ClickOnce usando o MSBuild clássico
+      - name: Publish ClickOnce (via MSBuild clássico)
+        shell: pwsh
         run: |
-          dotnet publish $env:PROJECT_PATH -c Release `
-            -p:PublishProfile=$env:PUBLISH_PROFILE `
-            -p:PublishDir=$env:PUBLISH_DIR/ `
-            -p:ApplicationVersion=${{ steps.get_version.outputs.version }} `
-            -p:SignManifests=false
+          & "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" `
+            "$env:PROJECT_PATH" /p:PublishProfile=$env:PUBLISH_PROFILE /p:PublishDir=$env:PUBLISH_DIR /p:ApplicationVersion=${{ steps.get_version.outputs.version }} /p:SignManifests=false /p:GenerateBootstrapper=true /p:PublishProtocol=FileSystem /p:Configuration=Release
 
-      # 6️⃣ Lista arquivos gerados (para debug)
+      # 5️⃣ Lista o conteúdo gerado
       - name: List publish output
         shell: pwsh
         run: Get-ChildItem -Recurse $env:PUBLISH_DIR | ForEach-Object { $_.FullName }
 
-      # 7️⃣ Cria a Release no GitHub com os arquivos ClickOnce
+      # 6️⃣ Cria Release com setup.exe e Application Files
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
