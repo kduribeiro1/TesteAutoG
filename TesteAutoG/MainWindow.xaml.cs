@@ -19,7 +19,7 @@ namespace TesteAutoG
         public MainWindow()
         {
             InitializeComponent();
-            txtversion.Text = "Version " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString();
+            txtversion.Text = "Kdu Ribeiro" + Environment.NewLine + "Version " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString();
         }
     }
 }
