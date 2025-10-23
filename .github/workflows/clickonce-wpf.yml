@@ -25,7 +25,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      # 3️⃣ Lê a versão do projeto (tag <Version> do csproj)
+      # 3️⃣ Lê a versão do projeto
       - name: Read project version
         id: get_version
         shell: pwsh
@@ -33,7 +33,7 @@ jobs:
           [xml]$proj = Get-Content "$env:PROJECT_PATH"
           $version = $proj.Project.PropertyGroup.Version
           if (-not $version) {
-            Write-Host "⚠️ Nenhuma versão encontrada; usando 1.0.0.0 por padrão."
+            Write-Host "⚠️ Nenhuma versão encontrada, usando 1.0.0.0"
             $version = "1.0.0.0"
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
@@ -42,20 +42,21 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore $env:PROJECT_PATH
 
-      # 5️⃣ Publica via perfil ClickOnce (.pubxml)
+      # 5️⃣ Publica o ClickOnce (usando perfil, mas sem assinatura)
       - name: Publish ClickOnce using VS profile
         run: |
           dotnet publish $env:PROJECT_PATH -c Release `
             -p:PublishProfile=$env:PUBLISH_PROFILE `
             -p:PublishDir=$env:PUBLISH_DIR/ `
-            -p:ApplicationVersion=${{ steps.get_version.outputs.version }}
+            -p:ApplicationVersion=${{ steps.get_version.outputs.version }} `
+            -p:SignManifests=false
 
-      # 6️⃣ Lista arquivos gerados (debug útil)
+      # 6️⃣ Lista arquivos gerados (para debug)
       - name: List publish output
         shell: pwsh
         run: Get-ChildItem -Recurse $env:PUBLISH_DIR | ForEach-Object { $_.FullName }
 
-      # 7️⃣ Cria Release no GitHub com a mesma versão do projeto
+      # 7️⃣ Cria a Release no GitHub com os arquivos ClickOnce
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
