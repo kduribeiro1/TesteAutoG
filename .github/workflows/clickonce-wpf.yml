@@ -19,13 +19,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Instala o Visual Studio Build Tools (com workload de Desktop .NET)
+      # 2️⃣ Instala o Visual Studio Build Tools (Desktop workload)
       - name: Install Visual Studio Build Tools
         run: |
           choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools --includeRecommended --includeOptional --quiet --norestart" --yes
-          echo "Visual Studio Build Tools instalado com sucesso."
+          echo "✅ Visual Studio Build Tools instalado com sucesso."
 
-      # 3️⃣ Lê a versão do projeto
+      # 3️⃣ Instala o .NET 8 SDK
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # 4️⃣ Restaura os pacotes NuGet
+      - name: Restore NuGet packages
+        run: dotnet restore $env:PROJECT_PATH
+
+      # 5️⃣ Lê a versão do projeto
       - name: Read project version
         id: get_version
         shell: pwsh
@@ -38,19 +48,26 @@ jobs:
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
-      # 4️⃣ Publica o ClickOnce usando o MSBuild clássico
+      # 6️⃣ Publica o ClickOnce via MSBuild clássico (com setup.exe)
       - name: Publish ClickOnce (via MSBuild clássico)
         shell: pwsh
         run: |
           & "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" `
-            "$env:PROJECT_PATH" /p:PublishProfile=$env:PUBLISH_PROFILE /p:PublishDir=$env:PUBLISH_DIR /p:ApplicationVersion=${{ steps.get_version.outputs.version }} /p:SignManifests=false /p:GenerateBootstrapper=true /p:PublishProtocol=FileSystem /p:Configuration=Release
+            "$env:PROJECT_PATH" `
+            /p:PublishProfile=$env:PUBLISH_PROFILE `
+            /p:PublishDir=$env:PUBLISH_DIR `
+            /p:ApplicationVersion=${{ steps.get_version.outputs.version }} `
+            /p:SignManifests=false `
+            /p:GenerateBootstrapper=true `
+            /p:PublishProtocol=FileSystem `
+            /p:Configuration=Release
 
-      # 5️⃣ Lista o conteúdo gerado
+      # 7️⃣ Lista o conteúdo gerado (debug)
       - name: List publish output
         shell: pwsh
         run: Get-ChildItem -Recurse $env:PUBLISH_DIR | ForEach-Object { $_.FullName }
 
-      # 6️⃣ Cria Release com setup.exe e Application Files
+      # 8️⃣ Cria a Release no GitHub com setup.exe e Application Files
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
