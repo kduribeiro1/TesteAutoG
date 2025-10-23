@@ -1,0 +1,70 @@
+name: Build and Publish ClickOnce (WPF .NET 8 - TesteAutoG)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      PROJECT_PATH: ./TesteAutoG/TesteAutoG.csproj
+      PUBLISH_PROFILE: ClickOnceProfile
+      PUBLISH_DIR: publish
+
+    steps:
+      # 1️⃣ Clona o repositório
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Instala o .NET 8 SDK
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # 3️⃣ Lê a versão do projeto (tag <Version> do csproj)
+      - name: Read project version
+        id: get_version
+        shell: pwsh
+        run: |
+          [xml]$proj = Get-Content "$env:PROJECT_PATH"
+          $version = $proj.Project.PropertyGroup.Version
+          if (-not $version) {
+            Write-Host "⚠️ Nenhuma versão encontrada; usando 1.0.0.0 por padrão."
+            $version = "1.0.0.0"
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      # 4️⃣ Restaura dependências
+      - name: Restore dependencies
+        run: dotnet restore $env:PROJECT_PATH
+
+      # 5️⃣ Publica via perfil ClickOnce (.pubxml)
+      - name: Publish ClickOnce using VS profile
+        run: |
+          dotnet publish $env:PROJECT_PATH -c Release `
+            -p:PublishProfile=$env:PUBLISH_PROFILE `
+            -p:PublishDir=$env:PUBLISH_DIR/ `
+            -p:ApplicationVersion=${{ steps.get_version.outputs.version }}
+
+      # 6️⃣ Lista arquivos gerados (debug útil)
+      - name: List publish output
+        shell: pwsh
+        run: Get-ChildItem -Recurse $env:PUBLISH_DIR | ForEach-Object { $_.FullName }
+
+      # 7️⃣ Cria Release no GitHub com a mesma versão do projeto
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Versão ${{ steps.get_version.outputs.version }}"
+          tag_name: "v${{ steps.get_version.outputs.version }}"
+          body: "Publicação automática ClickOnce (.NET 8 WPF - TesteAutoG)"
+          files: |
+            "${{ env.PUBLISH_DIR }}/setup.exe"
+            "${{ env.PUBLISH_DIR }}/TesteAutoG.application"
+            "${{ env.PUBLISH_DIR }}/Application Files/**/*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
